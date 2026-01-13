@@ -1,7 +1,7 @@
 """
 WooCommerce Integration Client
 """
-from woocommerce import API
+import httpx
 from typing import List, Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class WooCommerceClient:
     """Client for interacting with WooCommerce API"""
 
-    def __init__(self, shop_url: str, consumer_key: str, consumer_secret: str):
+    def __init__(self, shop_url: str, consumer_key: str, consumer_secret: str, api_version: str = "wc/v3"):
         """
         Initialize WooCommerce client
 
@@ -20,25 +20,40 @@ class WooCommerceClient:
             shop_url: WooCommerce store URL
             consumer_key: WooCommerce consumer key
             consumer_secret: WooCommerce consumer secret
+            api_version: WooCommerce API version
         """
         self.shop_url = shop_url.rstrip('/')
-        self.api = API(
-            url=self.shop_url,
-            consumer_key=consumer_key,
-            consumer_secret=consumer_secret,
-            version="wc/v3",
-            timeout=30
+        self.consumer_key = consumer_key
+        self.consumer_secret = consumer_secret
+        self.api_version = api_version
+        self.base_url = f"{self.shop_url}/wp-json/{self.api_version}"
+
+        # Use basic auth with consumer key and secret
+        self.client = httpx.Client(
+            auth=(consumer_key, consumer_secret),
+            timeout=30.0,
+            headers={"Content-Type": "application/json"}
         )
+
+    def __del__(self):
+        """Cleanup httpx client"""
+        if hasattr(self, 'client'):
+            self.client.close()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def test_connection(self) -> bool:
         """Test the WooCommerce connection"""
         try:
-            response = self.api.get("system_status")
+            response = self.client.get(f"{self.base_url}/system_status")
             return response.status_code == 200
         except Exception as e:
             logger.error(f"WooCommerce connection test failed: {str(e)}")
-            raise
+            # Try alternative test with products endpoint
+            try:
+                response = self.client.get(f"{self.base_url}/products", params={"per_page": 1})
+                return response.status_code == 200
+            except:
+                raise e
 
     def get_available_resources(self) -> List[str]:
         """Get list of available WooCommerce resources"""
@@ -141,7 +156,7 @@ class WooCommerceClient:
     def get_products(self, per_page: int = 100, page: int = 1) -> List[Dict[str, Any]]:
         """Get products from WooCommerce"""
         try:
-            response = self.api.get("products", params={"per_page": per_page, "page": page})
+            response = self.client.get(f"{self.base_url}/products", params={"per_page": per_page, "page": page})
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -152,7 +167,7 @@ class WooCommerceClient:
     def get_orders(self, per_page: int = 100, page: int = 1) -> List[Dict[str, Any]]:
         """Get orders from WooCommerce"""
         try:
-            response = self.api.get("orders", params={"per_page": per_page, "page": page})
+            response = self.client.get(f"{self.base_url}/orders", params={"per_page": per_page, "page": page})
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -163,7 +178,7 @@ class WooCommerceClient:
     def get_customers(self, per_page: int = 100, page: int = 1) -> List[Dict[str, Any]]:
         """Get customers from WooCommerce"""
         try:
-            response = self.api.get("customers", params={"per_page": per_page, "page": page})
+            response = self.client.get(f"{self.base_url}/customers", params={"per_page": per_page, "page": page})
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -174,7 +189,7 @@ class WooCommerceClient:
     def create_product(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a product in WooCommerce"""
         try:
-            response = self.api.post("products", product_data)
+            response = self.client.post(f"{self.base_url}/products", json=product_data)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -185,7 +200,7 @@ class WooCommerceClient:
     def update_product(self, product_id: int, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a product in WooCommerce"""
         try:
-            response = self.api.put(f"products/{product_id}", product_data)
+            response = self.client.put(f"{self.base_url}/products/{product_id}", json=product_data)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -196,7 +211,7 @@ class WooCommerceClient:
     def create_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create an order in WooCommerce"""
         try:
-            response = self.api.post("orders", order_data)
+            response = self.client.post(f"{self.base_url}/orders", json=order_data)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -207,7 +222,7 @@ class WooCommerceClient:
     def update_order(self, order_id: int, order_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an order in WooCommerce"""
         try:
-            response = self.api.put(f"orders/{order_id}", order_data)
+            response = self.client.put(f"{self.base_url}/orders/{order_id}", json=order_data)
             response.raise_for_status()
             return response.json()
         except Exception as e:

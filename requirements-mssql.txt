@@ -1,0 +1,5 @@
+# MS SQL Database Driver
+# Install with: pip install -r requirements-mssql.txt
+
+-r requirements.txt
+pyodbc>=5.0.0
