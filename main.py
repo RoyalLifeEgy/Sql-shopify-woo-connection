@@ -82,6 +82,77 @@ def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/dashboard")
+def get_dashboard_stats():
+    """Get dashboard statistics"""
+    from database import SessionLocal
+    from models import BusinessProfile, PlatformConnection, DatabaseConnection, FieldMapping, SyncLog
+    from sqlalchemy import func
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        # Get today's date
+        today = datetime.utcnow().date()
+
+        stats = {
+            "total_profiles": db.query(BusinessProfile).count(),
+            "total_platform_connections": db.query(PlatformConnection).count(),
+            "active_platform_connections": db.query(PlatformConnection).filter(
+                PlatformConnection.is_active == True
+            ).count(),
+            "total_database_connections": db.query(DatabaseConnection).count(),
+            "active_database_connections": db.query(DatabaseConnection).filter(
+                DatabaseConnection.is_active == True
+            ).count(),
+            "total_mappings": db.query(FieldMapping).count(),
+            "active_mappings": db.query(FieldMapping).filter(
+                FieldMapping.is_active == True
+            ).count(),
+            "total_sync_logs": db.query(SyncLog).count(),
+            "recent_syncs": db.query(SyncLog).filter(
+                func.date(SyncLog.started_at) == today
+            ).count()
+        }
+        return stats
+    finally:
+        db.close()
+
+
+@app.get("/logs/recent")
+def get_recent_logs(limit: int = 50):
+    """Get recent sync logs"""
+    from database import SessionLocal
+    from models import SyncLog
+
+    db = SessionLocal()
+    try:
+        logs = db.query(SyncLog).order_by(
+            SyncLog.started_at.desc()
+        ).limit(limit).all()
+
+        return {
+            "logs": [
+                {
+                    "id": log.id,
+                    "field_mapping_id": log.field_mapping_id,
+                    "sync_direction": log.sync_direction.value,
+                    "started_at": log.started_at.isoformat(),
+                    "completed_at": log.completed_at.isoformat() if log.completed_at else None,
+                    "status": log.status,
+                    "records_processed": log.records_processed,
+                    "records_successful": log.records_successful,
+                    "records_failed": log.records_failed,
+                    "error_message": log.error_message
+                }
+                for log in logs
+            ],
+            "total": len(logs)
+        }
+    finally:
+        db.close()
+
+
 @app.get("/scheduler/status")
 def scheduler_status():
     """Get scheduler status"""
