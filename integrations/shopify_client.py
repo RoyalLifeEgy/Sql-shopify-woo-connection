@@ -1,7 +1,7 @@
 """
 Shopify Integration Client
 """
-import shopify
+import httpx
 from typing import List, Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
@@ -12,28 +12,36 @@ logger = logging.getLogger(__name__)
 class ShopifyClient:
     """Client for interacting with Shopify API"""
 
-    def __init__(self, shop_url: str, access_token: str):
+    def __init__(self, shop_url: str, access_token: str, api_version: str = "2024-01"):
         """
         Initialize Shopify client
 
         Args:
             shop_url: Shopify shop URL (e.g., 'myshop.myshopify.com')
             access_token: Shopify access token
+            api_version: Shopify API version
         """
         self.shop_url = shop_url.replace('https://', '').replace('http://', '')
         self.access_token = access_token
-        self._setup_session()
+        self.api_version = api_version
+        self.base_url = f"https://{self.shop_url}/admin/api/{self.api_version}"
+        self.headers = {
+            "X-Shopify-Access-Token": self.access_token,
+            "Content-Type": "application/json"
+        }
+        self.client = httpx.Client(headers=self.headers, timeout=30.0)
 
-    def _setup_session(self):
-        """Setup Shopify session"""
-        shopify.ShopifyResource.set_site(f"https://{self.shop_url}/admin/api/2024-01")
-        shopify.ShopifyResource.headers = {"X-Shopify-Access-Token": self.access_token}
+    def __del__(self):
+        """Cleanup httpx client"""
+        if hasattr(self, 'client'):
+            self.client.close()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def test_connection(self) -> bool:
         """Test the Shopify connection"""
         try:
-            shop = shopify.Shop.current()
+            response = self.client.get(f"{self.base_url}/shop.json")
+            response.raise_for_status()
             return True
         except Exception as e:
             logger.error(f"Shopify connection test failed: {str(e)}")
@@ -134,12 +142,13 @@ class ShopifyClient:
     def get_products(self, limit: int = 250, since_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get products from Shopify"""
         try:
-            params = {"limit": limit}
+            params = {"limit": min(limit, 250)}
             if since_id:
                 params["since_id"] = since_id
 
-            products = shopify.Product.find(**params)
-            return [product.to_dict() for product in products]
+            response = self.client.get(f"{self.base_url}/products.json", params=params)
+            response.raise_for_status()
+            return response.json().get("products", [])
         except Exception as e:
             logger.error(f"Error fetching products: {str(e)}")
             raise
@@ -148,12 +157,13 @@ class ShopifyClient:
     def get_orders(self, limit: int = 250, since_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get orders from Shopify"""
         try:
-            params = {"limit": limit, "status": "any"}
+            params = {"limit": min(limit, 250), "status": "any"}
             if since_id:
                 params["since_id"] = since_id
 
-            orders = shopify.Order.find(**params)
-            return [order.to_dict() for order in orders]
+            response = self.client.get(f"{self.base_url}/orders.json", params=params)
+            response.raise_for_status()
+            return response.json().get("orders", [])
         except Exception as e:
             logger.error(f"Error fetching orders: {str(e)}")
             raise
@@ -162,12 +172,13 @@ class ShopifyClient:
     def get_customers(self, limit: int = 250, since_id: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get customers from Shopify"""
         try:
-            params = {"limit": limit}
+            params = {"limit": min(limit, 250)}
             if since_id:
                 params["since_id"] = since_id
 
-            customers = shopify.Customer.find(**params)
-            return [customer.to_dict() for customer in customers]
+            response = self.client.get(f"{self.base_url}/customers.json", params=params)
+            response.raise_for_status()
+            return response.json().get("customers", [])
         except Exception as e:
             logger.error(f"Error fetching customers: {str(e)}")
             raise
@@ -176,17 +187,10 @@ class ShopifyClient:
     def create_product(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a product in Shopify"""
         try:
-            product = shopify.Product()
-            product.title = product_data.get("title")
-            product.body_html = product_data.get("body_html", "")
-            product.vendor = product_data.get("vendor", "")
-            product.product_type = product_data.get("product_type", "")
-            product.tags = product_data.get("tags", "")
-
-            if product.save():
-                return product.to_dict()
-            else:
-                raise Exception(f"Failed to create product: {product.errors.full_messages()}")
+            payload = {"product": product_data}
+            response = self.client.post(f"{self.base_url}/products.json", json=payload)
+            response.raise_for_status()
+            return response.json().get("product", {})
         except Exception as e:
             logger.error(f"Error creating product: {str(e)}")
             raise
@@ -195,15 +199,10 @@ class ShopifyClient:
     def update_product(self, product_id: int, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update a product in Shopify"""
         try:
-            product = shopify.Product.find(product_id)
-            for key, value in product_data.items():
-                if hasattr(product, key):
-                    setattr(product, key, value)
-
-            if product.save():
-                return product.to_dict()
-            else:
-                raise Exception(f"Failed to update product: {product.errors.full_messages()}")
+            payload = {"product": product_data}
+            response = self.client.put(f"{self.base_url}/products/{product_id}.json", json=payload)
+            response.raise_for_status()
+            return response.json().get("product", {})
         except Exception as e:
             logger.error(f"Error updating product {product_id}: {str(e)}")
             raise

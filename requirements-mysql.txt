@@ -1,0 +1,5 @@
+# MySQL Database Driver
+# Install with: pip install -r requirements-mysql.txt
+
+-r requirements.txt
+pymysql>=1.1.0

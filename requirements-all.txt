@@ -1,0 +1,14 @@
+# All Database Drivers and Optional Dependencies
+# Install with: pip install -r requirements-all.txt
+# WARNING: Some drivers may require additional system dependencies
+
+-r requirements.txt
+
+# PostgreSQL (requires pg_config on some systems)
+psycopg2-binary>=2.9.9
+
+# MySQL
+pymysql>=1.1.0
+
+# MS SQL (Windows only, requires ODBC driver)
+# pyodbc>=5.0.0  # Uncomment if needed
