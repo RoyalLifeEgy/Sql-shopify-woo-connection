@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Profiles - SQL E-commerce Connector</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Navigation (same as dashboard) -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-gradient">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="dashboard.html">
+                <i class="bi bi-database-fill-gear"></i> SQL E-commerce Connector
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.html"><i class="bi bi-speedometer2"></i> Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="businesses.html"><i class="bi bi-building"></i> Businesses</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="connections.html"><i class="bi bi-plug"></i> Connections</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="mappings.html"><i class="bi bi-shuffle"></i> Field Mappings</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="logs.html"><i class="bi bi-clock-history"></i> Sync Logs</a>
+                    </li>
+                </ul>
+                <div class="d-flex">
+                    <span class="navbar-text me-3">
+                        <i class="bi bi-person-circle"></i> <span id="username"></span>
+                    </span>
+                    <button class="btn btn-outline-light btn-sm" onclick="logout()">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-building"></i> Business Profiles</h2>
+                    <button class="btn btn-primary" onclick="showCreateModal()">
+                        <i class="bi bi-plus-circle"></i> Create New Profile
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div id="profilesList">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div class="modal fade" id="profileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-building"></i> <span id="modalTitle">Create Business Profile</span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="profileForm">
+                        <input type="hidden" id="profileId">
+
+                        <div class="mb-3">
+                            <label class="form-label">Business Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="profileName" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="profileDescription" rows="3"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Contact Email</label>
+                            <input type="email" class="form-control" id="profileEmail">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Contact Phone</label>
+                            <input type="tel" class="form-control" id="profilePhone">
+                        </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="profileActive" checked>
+                            <label class="form-check-label" for="profileActive">
+                                Active
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="saveProfile()">
+                        <i class="bi bi-check-circle"></i> Save Profile
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/common.js"></script>
+    <script>
+        let profiles = [];
+        let profileModal;
+
+        async function loadProfiles() {
+            checkAuth();
+            document.getElementById('username').textContent = localStorage.getItem('username');
+
+            try {
+                profiles = await fetchAPI('/profiles');
+                displayProfiles();
+            } catch (error) {
+                console.error('Error loading profiles:', error);
+            }
+        }
+
+        function displayProfiles() {
+            const container = document.getElementById('profilesList');
+
+            if (!profiles || profiles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-building"></i>
+                        <h4>No Business Profiles Yet</h4>
+                        <p>Create your first business profile to get started</p>
+                        <button class="btn btn-primary" onclick="showCreateModal()">
+                            <i class="bi bi-plus-circle"></i> Create First Profile
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Contact</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${profiles.map(profile => `
+                                <tr>
+                                    <td>
+                                        <strong><i class="bi bi-building"></i> ${profile.name}</strong>
+                                    </td>
+                                    <td>${profile.description || '-'}</td>
+                                    <td>
+                                        ${profile.contact_email ? `<i class="bi bi-envelope"></i> ${profile.contact_email}<br>` : ''}
+                                        ${profile.contact_phone ? `<i class="bi bi-telephone"></i> ${profile.contact_phone}` : ''}
+                                    </td>
+                                    <td>${profile.is_active ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Inactive</span>'}</td>
+                                    <td>${formatDate(profile.created_at)}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info" onclick="viewProfile(${profile.id})" title="View">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-warning" onclick="editProfile(${profile.id})" title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteProfile(${profile.id}, '${profile.name}')" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function showCreateModal() {
+            document.getElementById('modalTitle').textContent = 'Create Business Profile';
+            document.getElementById('profileForm').reset();
+            document.getElementById('profileId').value = '';
+            document.getElementById('profileActive').checked = true;
+
+            profileModal = new bootstrap.Modal(document.getElementById('profileModal'));
+            profileModal.show();
+        }
+
+        function viewProfile(id) {
+            window.location.href = `connections.html?profile=${id}`;
+        }
+
+        async function editProfile(id) {
+            const profile = profiles.find(p => p.id === id);
+            if (!profile) return;
+
+            document.getElementById('modalTitle').textContent = 'Edit Business Profile';
+            document.getElementById('profileId').value = profile.id;
+            document.getElementById('profileName').value = profile.name;
+            document.getElementById('profileDescription').value = profile.description || '';
+            document.getElementById('profileEmail').value = profile.contact_email || '';
+            document.getElementById('profilePhone').value = profile.contact_phone || '';
+            document.getElementById('profileActive').checked = profile.is_active;
+
+            profileModal = new bootstrap.Modal(document.getElementById('profileModal'));
+            profileModal.show();
+        }
+
+        async function saveProfile() {
+            const id = document.getElementById('profileId').value;
+            const data = {
+                name: document.getElementById('profileName').value,
+                description: document.getElementById('profileDescription').value,
+                contact_email: document.getElementById('profileEmail').value,
+                contact_phone: document.getElementById('profilePhone').value,
+                is_active: document.getElementById('profileActive').checked
+            };
+
+            if (!data.name) {
+                showToast('Business name is required', 'danger');
+                return;
+            }
+
+            showLoading(id ? 'Updating profile...' : 'Creating profile...');
+
+            try {
+                if (id) {
+                    await fetchAPI(`/profiles/${id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(data)
+                    });
+                    showToast('Profile updated successfully', 'success');
+                } else {
+                    await fetchAPI('/profiles', {
+                        method: 'POST',
+                        body: JSON.stringify(data)
+                    });
+                    showToast('Profile created successfully', 'success');
+                }
+
+                bootstrap.Modal.getInstance(document.getElementById('profileModal')).hide();
+                await loadProfiles();
+            } catch (error) {
+                showToast('Failed to save profile: ' + error.message, 'danger');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteProfile(id, name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?\n\nThis will also delete all associated connections and mappings.`)) {
+                return;
+            }
+
+            showLoading('Deleting profile...');
+
+            try {
+                await fetchAPI(`/profiles/${id}`, {
+                    method: 'DELETE'
+                });
+                showToast('Profile deleted successfully', 'success');
+                await loadProfiles();
+            } catch (error) {
+                showToast('Failed to delete profile: ' + error.message, 'danger');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Check if action=create in URL
+        const action = getURLParameter('action');
+        if (action === 'create') {
+            setTimeout(() => showCreateModal(), 500);
+        }
+
+        // Load profiles on page load
+        loadProfiles();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
